@@ -1,1 +1,0 @@
-{"meta": {"pyfs-version": "1.0"}, "contents": {"name": "", "type": "dir", "files": [{"name": "ls", "type": "dir", "files": [{"name": "ls", "type": "dir", "files": []}, {"name": "file", "type": "file", "contents": "my Name is something"}]}]}}

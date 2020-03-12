@@ -1,11 +1,13 @@
 import json
-import posixpath
+from os import path as posixpath, urandom as rand
+from base64 import b64decode, b64encode
+from Cryptodome.Cipher import ChaCha20
 
-__version__ = '1.0'
+__version__ = '2.1'
 
 
 class FileSystem(object):
-    def __init__(self, fsname):
+    def __init__(self, fsname, key):
         self.json_decoder = json.JSONDecoder()
         self.filename = "filesystem_{}.json".format(fsname)
         self.nullfs = {
@@ -17,12 +19,13 @@ class FileSystem(object):
                 ]
             }
         }
+        self.key = key
         if not posixpath.exists(self.filename):
             with open(self.filename, 'w+') as filesystem:
                 filesystem.write(json.dumps(self.nullfs))
                 self.fs = self.nullfs
         else:
-            with open(self.filename) as filesystem:
+            with open(self.filename, 'r+') as filesystem:
                 self.fs = self.json_decoder.decode(filesystem.read())
 
     def update_fs(self):
@@ -30,9 +33,9 @@ class FileSystem(object):
             filesystem.write(json.dumps(self.fs))
 
     def exists(self, abspath):
-        return self.isFile(abspath) or self.isDir(abspath)
+        return self.is_file(abspath) or self.is_dir(abspath)
 
-    def isFile(self, abspath):
+    def is_file(self, abspath):
         path = abspath.strip('/').split('/')
         contents = self.fs['contents']['files']
         for j in range(len(path)):
@@ -45,7 +48,7 @@ class FileSystem(object):
                         break
         return False
 
-    def isDir(self, abspath):
+    def is_dir(self, abspath):
         path = abspath.strip('/').split('/')
         contents = self.fs['contents']['files']
         for j in range(len(path)):
@@ -90,6 +93,7 @@ class FileSystem(object):
         data = {
             'name': filename,
             'type': 'file',
+            'nonce': b64encode(rand(12)),
             'contents': ''
         }
         if location == '/':
@@ -148,7 +152,7 @@ class FileSystem(object):
             out.append({'name': i['name'], 'type': i['type']})
         return out
 
-    def readFile(self,location,file):
+    def read_file(self, location, file):
         root = self.fs['contents']['files']
         if location != '/':
             path = location.strip('/').split('/')
@@ -161,10 +165,13 @@ class FileSystem(object):
                     return 1
         for i in root:
             if i['name'] == file:
-                return i['contents']
+                data = b64decode(i['contents'])
+                cipher = ChaCha20.new(key=self.key[:32], nonce=b64decode(i['nonce']))
+                return cipher.decrypt(data)
         else:
             return 1
-    def writeFile(self,location,file,data):
+
+    def write_file(self, location, file, data: bytes) -> int:
         root = self.fs['contents']['files']
         if location != '/':
             path = location.strip('/').split('/')
@@ -177,7 +184,8 @@ class FileSystem(object):
                     return 1
         for i in root:
             if i['name'] == file:
-                i['contents'] = data
+                cipher = ChaCha20.new(key=self.key[:32], nonce=b64decode(i['nonce']))
+                i['contents'] = b64encode(cipher.encrypt(data)).decode()
                 return 0
         else:
             return 1
